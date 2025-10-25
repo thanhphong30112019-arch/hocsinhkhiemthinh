@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>Nhận dạng ngôn ngữ ký hiệu bằng Teachable Machine</title>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        background-color: #f5f5f5;
+        text-align: center;
+        margin: 0;
+        padding: 20px;
+    }
+    h1 {
+        color: #2E7D32;
+        margin-bottom: 10px;
+    }
+    button {
+        background-color: #4CAF50;
+        color: white;
+        padding: 10px 20px;
+        font-size: 18px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        margin-bottom: 20px;
+    }
+    button:hover {
+        background-color: #45a049;
+    }
+    #webcam-container {
+        margin: 0 auto;
+        width: 320px;
+        height: 320px;
+        border: 3px solid #4CAF50;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 0 10px rgba(0,0,0,0.3);
+    }
+    #label-container {
+        font-size: 26px;
+        font-weight: bold;
+        color: #1B5E20;
+        margin-top: 20px;
+    }
+    table {
+        width: 90%;
+        margin: 30px auto;
+        border-collapse: collapse;
+        background: white;
+    }
+    th, td {
+        border: 1px solid #333;
+        padding: 8px;
+        text-align: center;
+        font-size: 15px;
+    }
+    th {
+        background-color: #C8E6C9;
+        color: #2E7D32;
+    }
+</style>
+</head>
+<body>
+
+<h1>NHẬN DẠNG NGÔN NGỮ KÝ HIỆU<br>HỖ TRỢ NGƯỜI KHIẾM THÍNH</h1>
+<button onclick="init()">Bắt đầu nhận dạng</button>
+
+<div id="webcam-container"></div>
+<div id="label-container">Ký hiệu sẽ hiển thị tại đây...</div>
+
+<!-- BẢNG MÔ TẢ -->
+<h2>Bảng mô tả các ký hiệu tay được huấn luyện</h2>
+<table>
+    <tr>
+        <th>STT</th>
+        <th>Ký hiệu tay (mô tả)</th>
+        <th>Nội dung hiển thị / Phát âm</th>
+        <th>Ý nghĩa giao tiếp</th>
+    </tr>
+    <tr><td>1</td><td>Bàn tay mở ra, lòng tay hướng về trước</td><td>Xin chào!</td><td>Chào hỏi khi gặp nhau</td></tr>
+    <tr><td>2</td><td>Ngón cái giơ lên</td><td>Tốt lắm!</td><td>Thể hiện sự đồng ý / khen ngợi</td></tr>
+    <tr><td>3</td><td>Hai ngón giơ hình chữ V</td><td>Tạm biệt!</td><td>Tạm biệt, vui vẻ</td></tr>
+    <tr><td>4</td><td>Dạng “I love you” (ngón cái, trỏ, út giơ lên)</td><td>Tôi yêu bạn</td><td>Thân thiện, bày tỏ tình cảm</td></tr>
+    <tr><td>5</td><td>Nắm tay lại</td><td>Cố lên!</td><td>Động viên, khích lệ</td></tr>
+    <tr><td>6</td><td>Vẫy tay nhẹ</td><td>Hẹn gặp lại!</td><td>Chào tạm biệt</td></tr>
+    <tr><td>7</td><td>Tay giơ lên, lòng tay hướng ra</td><td>Xin lỗi!</td><td>Thể hiện xin lỗi, dừng lại</td></tr>
+    <tr><td>8</td><td>Chỉ ngón trỏ về phía trước</td><td>Bạn đấy!</td><td>Nhấn mạnh, chỉ đối tượng</td></tr>
+    <tr><td>9</td><td>Tay giả vờ viết (dùng ngón trỏ viết trong không khí)</td><td>Tôi muốn ghi chú</td><td>Thể hiện ý muốn viết / học</td></tr>
+    <tr><td>10</td><td>Hai tay chụm lại như nhận quà</td><td>Cảm ơn!</td><td>Thể hiện lòng biết ơn</td></tr>
+</table>
+
+<!-- THƯ VIỆN JS -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+
+<script>
+const URL = "https://teachablemachine.withgoogle.com/models/wVDplVtSL/";
+
+let model, webcam, labelContainer, maxPredictions;
+let lastSpoken = ""; // lưu ký hiệu đã đọc để tránh lặp lại
+const labels = [
+    "Xin chào!", "Tốt lắm!", "Tạm biệt!", "Tôi yêu bạn", "Cố lên!",
+    "Hẹn gặp lại!", "Xin lỗi!", "Bạn đấy!", "Tôi muốn ghi chú", "Cảm ơn!"
+];
+
+// Khởi động mô hình
+async function init() {
+    const modelURL = URL + "model.json";
+    const metadataURL = URL + "metadata.json";
+    model = await tmImage.load(modelURL, metadataURL);
+    maxPredictions = model.getTotalClasses();
+
+    const flip = true;
+    webcam = new tmImage.Webcam(500, 500, flip);
+    await webcam.setup();
+    await webcam.play();
+    window.requestAnimationFrame(loop);
+
+    document.getElementById("webcam-container").appendChild(webcam.canvas);
+    labelContainer = document.getElementById("label-container");
+}
+
+// Nhận dạng liên tục
+async function loop() {
+    webcam.update();
+    await predict();
+    window.requestAnimationFrame(loop);
+}
+
+// Dự đoán
+async function predict() {
+    const prediction = await model.predict(webcam.canvas);
+    let highest = 0;
+    let classIndex = 0;
+
+    for (let i = 0; i < maxPredictions; i++) {
+        if (prediction[i].probability > highest) {
+            highest = prediction[i].probability;
+            classIndex = i;
+        }
+    }
+
+    if (highest > 0.75) {
+        const result = labels[classIndex];
+        labelContainer.innerHTML = result;
+
+        // Nếu nhận được ký hiệu mới thì phát âm
+        if (result !== lastSpoken) {
+            speak(result);
+            lastSpoken = result;
+        }
+    } else {
+        labelContainer.innerHTML = "Đang nhận dạng...";
+    }
+}
+
+// Phát âm (Text-to-Speech)
+function speak(text) {
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = "vi-VN"; // tiếng Việt
+    utter.pitch = 1;
+    utter.rate = 1;
+    utter.volume = 1;
+    speechSynthesis.speak(utter);
+}
+</script>
+
+</body>
+</html>

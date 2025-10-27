@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>Nhận dạng ký hiệu tay - Hỗ trợ người khiếm thính</title>
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background-color: #f5f5f5;
+  text-align: center;
+  padding: 20px;
+}
+#webcam-container {
+  width: 320px;
+  height: 320px;
+  margin: 20px auto;
+  border: 5px solid #4CAF50;
+  border-radius: 15px;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+#webcam-container.active {
+  border-color: #FF9800;
+  box-shadow: 0 0 25px #FFB300;
+}
+#label-container {
+  font-size: 24px;
+  color: #1B5E20;
+  font-weight: bold;
+  margin-top: 15px;
+}
+button {
+  background-color: #4CAF50;
+  color: white;
+  padding: 10px 20px;
+  font-size: 18px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+button:hover {
+  background-color: #45a049;
+}
+table {
+        width: 95%;
+        margin: 30px auto;
+        border-collapse: collapse;
+        background: white;
+    }
+    th, td {
+        border: 1px solid #333;
+        padding: 8px;
+        text-align: center;
+        font-size: 15px;
+    }
+    th {
+        background-color: #C8E6C9;
+        color: #2E7D32;
+    }
+    img {
+        width: 90px;
+        height: 90px;
+        border-radius: 10px;
+        object-fit: cover;
+    }
+</style>
+</head>
+<body>
+
+<h1>ỨNG DỤNG AI TEACHABLE MACHINE<br>NHẬN DẠNG KÝ HIỆU TAY HỖ TRỢ NGƯỜI KHIẾM THÍNH</h1>
+<button onclick="init()">Bắt đầu nhận dạng</button>
+
+<div id="webcam-container"></div>
+<div id="label-container">Ký hiệu sẽ hiển thị tại đây...</div>
+<!-- BẢNG MÔ TẢ -->
+<h2>Bảng mô tả 10 ký hiệu tay được huấn luyện</h2>
+<table>
+    <tr>
+        <th>STT</th>
+        <th>Hình minh họa</th>
+        <th>Ký hiệu tay (mô tả)</th>
+        <th>Nội dung hiển thị / Phát âm</th>
+        <th>Ý nghĩa giao tiếp</th>
+    </tr>
+    <tr><td>1</td><td><img src="images/anh1.png" alt="Xin chào"></td><td>Bàn tay mở ra, lòng tay hướng về trước</td><td>Xin chào!</td><td>Chào hỏi khi gặp nhau</td></tr>
+    <tr><td>2</td><td><img src="images/anh2.png" alt="Tốt lắm"></td><td>Ngón cái giơ lên</td><td>Tốt lắm!</td><td>Đồng ý / khen ngợi</td></tr>
+    <tr><td>3</td><td><img src="images/anh3.png" alt="Tạm biệt"></td><td>Hai ngón giơ hình chữ V</td><td>Tạm biệt!</td><td>Tạm biệt, thân thiện</td></tr>
+    <tr><td>4</td><td><img src="images/anh4.png" alt="Tôi yêu bạn"></td><td>Dạng “I love you” (ngón cái, trỏ, út giơ lên)</td><td>Tôi yêu bạn</td><td>Thân thiện, bày tỏ tình cảm</td></tr>
+    <tr><td>5</td><td><img src="images/anh5.png" alt="Cố lên"></td><td>Nắm tay lại</td><td>Cố lên!</td><td>Động viên, khích lệ</td></tr>
+    <tr><td>6</td><td><img src="images/anh6.png" alt="Hẹn gặp lại"></td><td>Vẫy tay nhẹ</td><td>Hẹn gặp lại!</td><td>Tạm biệt vui vẻ</td></tr>
+    <tr><td>7</td><td><img src="images/anh7.png" alt="Xin lỗi"></td><td>Tay giơ lên, lòng tay hướng ra</td><td>Xin lỗi!</td><td>Thể hiện xin lỗi, dừng lại</td></tr>
+    <tr><td>8</td><td><img src="images/anh8.png" alt="Bạn đấy"></td><td>Chỉ ngón trỏ về phía trước</td><td>Bạn đấy!</td><td>Nhấn mạnh / chỉ đối tượng</td></tr>
+    <tr><td>9</td><td><img src="images/anh9.png" alt="Tôi muốn ghi chú"></td><td>Tay giả vờ viết trong không khí</td><td>Tôi muốn ghi chú</td><td>Thể hiện ý muốn viết / học</td></tr>
+    <tr><td>10</td><td><img src="images/anh10.png" alt="Cảm ơn"></td><td>Hai tay chụm lại như nhận quà</td><td>Cảm ơn!</td><td>Thể hiện lòng biết ơn</td></tr>
+</table>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+
+<script>
+const URL = "https://teachablemachine.withgoogle.com/models/wVDplVtSL/";
+let model, webcam, labelContainer, maxPredictions;
+let lastLabel = "", currentLabel = "";
+let stableStart = 0;
+const STABLE_DELAY = 1000; // thời gian ổn định 1s
+const webcamContainer = document.getElementById("webcam-container");
+const labels = [
+  "Xin chào!", "Tốt lắm!", "Tạm biệt!", "Tôi yêu bạn", "Cố lên!",
+  "Hẹn gặp lại!", "Xin lỗi!", "Bạn đấy!", "Tôi muốn ghi chú", "Cảm ơn!"
+];
+
+async function init() {
+  try {
+    const modelURL = URL + "model.json";
+    const metadataURL = URL + "metadata.json";
+    model = await tmImage.load(modelURL, metadataURL);
+    maxPredictions = model.getTotalClasses();
+
+    const flip = true;
+    webcam = new tmImage.Webcam(320, 320, flip);
+    await webcam.setup();
+    await webcam.play();
+    window.requestAnimationFrame(loop);
+
+    document.getElementById("webcam-container").appendChild(webcam.canvas);
+    labelContainer = document.getElementById("label-container");
+  } catch (e) {
+    alert("Lỗi tải mô hình hoặc truy cập webcam. Hãy chạy trên Live Server hoặc HTTPS!");
+    console.error(e);
+  }
+}
+
+async function loop() {
+  webcam.update();
+  await predict();
+  window.requestAnimationFrame(loop);
+}
+
+async function predict() {
+  const prediction = await model.predict(webcam.canvas);
+  let highest = 0, classIndex = 0;
+
+  for (let i = 0; i < maxPredictions; i++) {
+    if (prediction[i].probability > highest) {
+      highest = prediction[i].probability;
+      classIndex = i;
+    }
+  }
+
+  if (highest > 0.75) {
+    const result = labels[classIndex];
+    labelContainer.innerHTML = result;
+
+    if (result !== currentLabel) {
+      currentLabel = result;
+      stableStart = Date.now();
+    } else if (Date.now() - stableStart > STABLE_DELAY && result !== lastLabel) {
+      speak(result);
+      lastLabel = result;
+    }
+  } else {
+    labelContainer.innerHTML = "Đang nhận dạng...";
+    currentLabel = "";
+  }
+}
+
+function speak(text) {
+  speechSynthesis.cancel();
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang = "vi-VN";
+  utter.pitch = 1;
+  utter.rate = 1;
+  utter.volume = 1;
+
+  // Hiệu ứng viền sáng khi phát âm
+  webcamContainer.classList.add("active");
+  utter.onend = () => webcamContainer.classList.remove("active");
+
+  speechSynthesis.speak(utter);
+}
+</script>
+</body>
+</html>
